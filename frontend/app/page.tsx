@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ParallaxViewer, PartMeta } from "@/lib/parallax-viewer";
+import TwoDStage from "@/components/two-d-stage";
 
 /* ---- types ---- */
+type Mode = "3d" | "2d";
 type AppState = "loaded" | "empty" | "generating" | "error";
 type AssetType = "multi" | "single" | "error";
 type Selected = Pick<PartMeta, "id" | "name" | "note">;
@@ -30,6 +32,7 @@ const ASSETS: Asset[] = [
 ];
 
 const ACCENT = "#3ad8ff";
+const FRAMES_2D = 48;
 
 const INTRO: Msg = {
   role: "agent",
@@ -38,7 +41,7 @@ const INTRO: Msg = {
   actions: ["reconstruct() · 8 parts"],
 };
 
-const GEN_STEPS: [number, string][] = [
+const GEN_STEPS_3D: [number, string][] = [
   [0, "Segmenting source image…"],
   [22, "Estimating depth & silhouette…"],
   [44, "Reconstructing part geometry…"],
@@ -46,7 +49,15 @@ const GEN_STEPS: [number, string][] = [
   [84, "Assigning material & axes…"],
 ];
 
+const GEN_STEPS_2D: [number, string][] = [
+  [0, "Generating part image…"],
+  [25, "Rendering multi-angle shots…"],
+  [55, "Synthesizing exploded frames…"],
+  [80, "Encoding sequence…"],
+];
+
 export default function Home() {
+  const [mode, setMode] = useState<Mode>("3d");
   const [appState, setAppState] = useState<AppState>("loaded");
   const [modelName, setModelName] = useState("Single-Cylinder Assembly");
   const [explode, setExplode] = useState(0);
@@ -70,10 +81,18 @@ export default function Home() {
   const progAccum = useRef(0);
   const genAssetRef = useRef<Asset | null>(null);
   const singlePartRef = useRef(false);
+  const modeRef = useRef<Mode>("3d");
 
   singlePartRef.current = singlePart;
+  modeRef.current = mode;
 
-  /* ---- viewer lifecycle ---- */
+  // optional ?tab=2d|3d deep link (read once on mount)
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t === "2d" || t === "3d") setMode(t);
+  }, []);
+
+  /* ---- 3D viewer lifecycle (kept mounted across tabs) ---- */
   useEffect(() => {
     let disposed = false;
     let viewer: ParallaxViewer | null = null;
@@ -88,7 +107,6 @@ export default function Home() {
       });
       viewer.setAutoOrbit(false);
       viewerRef.current = viewer;
-      // preselect the piston, like the prototype's "already inspected" state
       selectTimer = setTimeout(() => {
         if (disposed || !viewer) return;
         viewer.selectPart("P-02");
@@ -105,12 +123,10 @@ export default function Home() {
     };
   }, []);
 
-  // keep the message log pinned to the newest message
   useEffect(() => {
     if (logElRef.current) logElRef.current.scrollTop = logElRef.current.scrollHeight;
   }, [msgs, thinking]);
 
-  // clean up timers on unmount
   useEffect(() => {
     return () => {
       if (genTimer.current) clearInterval(genTimer.current);
@@ -125,7 +141,7 @@ export default function Home() {
     if (m) setSelected(m);
   }, []);
 
-  /* ---- scripted agent (acts on the live viewer) ---- */
+  /* ---- scripted agent (mode-aware: acts on the live 3D viewer or the frame scrubber) ---- */
   const handleUserText = useCallback(
     (text: string) => {
       setMsgs((prev) => prev.concat([{ role: "user", text }]));
@@ -135,12 +151,56 @@ export default function Home() {
 
       thinkTimer.current = setTimeout(() => {
         const v = viewerRef.current;
-        const intents: {
-          match: RegExp;
-          actions: string[];
-          text: string;
-          run: () => void;
-        }[] = [
+
+        // ----- 2D frame-scrub mode -----
+        if (modeRef.current === "2d") {
+          const twoD: { match: RegExp; actions: string[]; text: string; run: () => void }[] = [
+            {
+              match: /(come?s? apart|explode|disassemb|take apart|separate|blow.?up|run.*apart|exploded)/i,
+              actions: ["scrub(1.0)"],
+              text:
+                "Scrubbing to the fully exploded frame — the parts fan out along the assembly axis. Each frame between here and 0% is a generated in-between.",
+              run: () => setExplode(1),
+            },
+            {
+              match: /(reset|reassemble|assemble|put.*back|default|collapse|back to)/i,
+              actions: ["scrub(0.0)"],
+              text: "Back to the assembled frame.",
+              run: () => setExplode(0),
+            },
+            {
+              match: /(explain|sequence|how|parts|what|pipeline)/i,
+              actions: [],
+              text:
+                "This view is a generated exploded sequence: an image model produces the part and its multi-angle shots, then a second model synthesizes the frames between assembled and exploded. The slider scrubs that sequence — 0% assembled, 100% exploded.",
+              run: () => {},
+            },
+          ];
+          const intent = twoD.find((i) => i.match.test(text));
+          if (intent) {
+            intent.run();
+            setThinking(false);
+            setMsgs((prev) =>
+              prev.concat([{ role: "agent", text: intent.text, actions: intent.actions }]),
+            );
+          } else {
+            setThinking(false);
+            setMsgs((prev) =>
+              prev.concat([
+                {
+                  role: "agent",
+                  text:
+                    "In the 2D demo I scrub the generated exploded sequence. Try: “run it apart”, “back to assembled”, or “explain the sequence”.",
+                  actions: [],
+                },
+              ]),
+            );
+          }
+          return;
+        }
+
+        // ----- 3D mode -----
+        const intents: { match: RegExp; actions: string[]; text: string; run: () => void }[] = [
           {
             match: /(come?s? apart|explode|disassemb|take apart|separate|blow.?up)/i,
             actions: ["reset()", "explode(1.0)"],
@@ -212,11 +272,7 @@ export default function Home() {
 
         const intent = intents.find((i) => i.match.test(text));
 
-        if (
-          singlePartRef.current &&
-          intent &&
-          /explode/i.test(intent.actions.join(" "))
-        ) {
+        if (singlePartRef.current && intent && /explode/i.test(intent.actions.join(" "))) {
           setThinking(false);
           setMsgs((prev) =>
             prev.concat([
@@ -271,14 +327,14 @@ export default function Home() {
     [send],
   );
 
-  /* ---- slider ---- */
+  /* ---- slider: explode (3D) or frame scrub (2D) ---- */
   const onSlider = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const v = parseFloat(e.target.value);
-    setExplode(v);
-    viewerRef.current?.setExplode(v);
+    const val = parseFloat(e.target.value);
+    setExplode(val);
+    if (modeRef.current === "3d") viewerRef.current?.setExplode(val);
   }, []);
 
-  /* ---- selected-part card ---- */
+  /* ---- selected-part card (3D only) ---- */
   const focusSel = useCallback(() => {
     const v = viewerRef.current;
     if (v && selected) {
@@ -307,52 +363,73 @@ export default function Home() {
     }
   }, []);
 
-  /* ---- generation simulation ---- */
-  const finishGenerate = useCallback((a: Asset) => {
-    const single = a.type === "single";
-    const v = viewerRef.current;
-    if (v) {
-      v.setSinglePart(single);
-      v.reset();
-    }
-    const intro: Msg = single
-      ? {
-          role: "agent",
-          text: `Loaded ${a.name}. This source resolved as a single part — explode and isolate are unavailable, but you can focus and orbit it.`,
-          actions: ["reconstruct() · 1 part"],
-        }
-      : {
-          role: "agent",
-          text: `Loaded ${a.name} — 8 parts resolved. Ask me to explode it, isolate a subsystem, or flag wear surfaces.`,
-          actions: ["reconstruct() · 8 parts"],
-        };
-    setAppState("loaded");
-    setModelName(a.name);
-    setActiveAssetId(a.id);
-    setSinglePart(single);
-    setPartCount(single ? 1 : 8);
-    setExplode(0);
-    setSelected(null);
-    setMsgs([intro]);
-    if (!single) {
-      setTimeout(() => {
-        const vv = viewerRef.current;
-        if (vv) {
-          vv.selectPart("P-02");
-          selectById("P-02");
-        }
-      }, 240);
-    }
-  }, [selectById]);
+  /* ---- generation simulation (mode-aware) ---- */
+  const finishGenerate = useCallback(
+    (a: Asset) => {
+      if (modeRef.current === "2d") {
+        setAppState("loaded");
+        setModelName(a.name);
+        setActiveAssetId(a.id);
+        setSinglePart(false);
+        setExplode(0);
+        setSelected(null);
+        setMsgs([
+          {
+            role: "agent",
+            text: `Generated an exploded sequence for ${a.name}. Drag the frame slider — 0% assembled, 100% exploded — or ask me to run it apart.`,
+            actions: ["synthesize() · 48 frames"],
+          },
+        ]);
+        return;
+      }
+
+      const single = a.type === "single";
+      const v = viewerRef.current;
+      if (v) {
+        v.setSinglePart(single);
+        v.reset();
+      }
+      const intro: Msg = single
+        ? {
+            role: "agent",
+            text: `Loaded ${a.name}. This source resolved as a single part — explode and isolate are unavailable, but you can focus and orbit it.`,
+            actions: ["reconstruct() · 1 part"],
+          }
+        : {
+            role: "agent",
+            text: `Loaded ${a.name} — 8 parts resolved. Ask me to explode it, isolate a subsystem, or flag wear surfaces.`,
+            actions: ["reconstruct() · 8 parts"],
+          };
+      setAppState("loaded");
+      setModelName(a.name);
+      setActiveAssetId(a.id);
+      setSinglePart(single);
+      setPartCount(single ? 1 : 8);
+      setExplode(0);
+      setSelected(null);
+      setMsgs([intro]);
+      if (!single) {
+        setTimeout(() => {
+          const vv = viewerRef.current;
+          if (vv) {
+            vv.selectPart("P-02");
+            selectById("P-02");
+          }
+        }, 240);
+      }
+    },
+    [selectById],
+  );
 
   const startGenerate = useCallback(
     (a: Asset) => {
       if (genTimer.current) clearInterval(genTimer.current);
       progAccum.current = 0;
       genAssetRef.current = a;
+      const steps = modeRef.current === "2d" ? GEN_STEPS_2D : GEN_STEPS_3D;
       setAppState("generating");
       setProgress(0);
-      setGenStep("Segmenting source image…");
+      setGenStep(steps[0][1]);
 
       genTimer.current = setInterval(() => {
         progAccum.current += 3 + Math.random() * 4;
@@ -371,8 +448,8 @@ export default function Home() {
           finishGenerate(a);
           return;
         }
-        let step = GEN_STEPS[0][1];
-        for (const st of GEN_STEPS) if (p >= st[0]) step = st[1];
+        let step = steps[0][1];
+        for (const st of steps) if (p >= st[0]) step = st[1];
         setProgress(p);
         setGenStep(step);
       }, 95);
@@ -406,18 +483,31 @@ export default function Home() {
     if (a) startGenerate({ ...a, type: "multi" });
   }, [startGenerate]);
 
+  const switchMode = useCallback((m: Mode) => {
+    setMode(m);
+    setDrawerOpen(false);
+  }, []);
+
   /* ---- derived ---- */
+  const is2d = mode === "2d";
   const explodePct = Math.round((explode || 0) * 100);
-  const explodeLabel = singlePart ? "N/A" : explodePct + "%";
-  const sliderDisabled = appState !== "loaded" || singlePart;
+  const explodeLabel = !is2d && singlePart ? "N/A" : explodePct + "%";
+  const sliderDisabled = appState !== "loaded" || (!is2d && singlePart);
+
   const partCountLabel = singlePart ? "1 PART" : partCount + " PARTS";
 
-  const suggestions = [
-    { label: "Show how it comes apart", text: "Show me how this comes apart" },
-    { label: "Isolate the valve train", text: "Isolate the valve train" },
-    { label: "Which parts wear fastest?", text: "Which parts wear the fastest?" },
-    { label: "Reset", text: "Reset the view" },
-  ];
+  const suggestions = is2d
+    ? [
+        { label: "Run it apart", text: "Run it apart" },
+        { label: "Back to assembled", text: "Back to assembled" },
+        { label: "Explain the sequence", text: "Explain the sequence" },
+      ]
+    : [
+        { label: "Show how it comes apart", text: "Show me how this comes apart" },
+        { label: "Isolate the valve train", text: "Isolate the valve train" },
+        { label: "Which parts wear fastest?", text: "Which parts wear the fastest?" },
+        { label: "Reset", text: "Reset the view" },
+      ];
 
   return (
     <div className="pl-app">
@@ -429,6 +519,26 @@ export default function Home() {
           <span className="pl-brand-ver">v0.4</span>
         </div>
         <div className="pl-vrule" />
+
+        <div className="pl-seg" role="tablist" aria-label="Demo mode">
+          <button
+            role="tab"
+            aria-selected={!is2d}
+            className={`pl-seg-btn${!is2d ? " active" : ""}`}
+            onClick={() => switchMode("3d")}
+          >
+            <span className="dot" /> 3D Demo
+          </button>
+          <button
+            role="tab"
+            aria-selected={is2d}
+            className={`pl-seg-btn${is2d ? " active" : ""}`}
+            onClick={() => switchMode("2d")}
+          >
+            <span className="dot" /> 2D Demo
+          </button>
+        </div>
+
         <button className="pl-btn outline" onClick={onNew}>
           <span className="plus">+</span> Upload / New
         </button>
@@ -440,7 +550,7 @@ export default function Home() {
         <div className="pl-spacer" />
 
         <div className="pl-explode">
-          <span className="lbl">EXPLODE</span>
+          <span className="lbl">{is2d ? "FRAME" : "EXPLODE"}</span>
           <input
             type="range"
             min={0}
@@ -476,7 +586,7 @@ export default function Home() {
               <span className="pl-agent-dot" />
               <span className="label">AGENT</span>
             </div>
-            <span className="sub">acts on model</span>
+            <span className="sub">{is2d ? "scrubs sequence" : "acts on model"}</span>
           </div>
 
           <div className="pl-log" ref={logElRef}>
@@ -533,7 +643,11 @@ export default function Home() {
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={onKey}
-                placeholder="Ask about a part, or tell me to isolate / focus / explode…"
+                placeholder={
+                  is2d
+                    ? "Scrub the sequence, or ask me to run it apart…"
+                    : "Ask about a part, or tell me to isolate / focus / explode…"
+                }
               />
               <button className="pl-send" onClick={send} aria-label="Send">
                 <svg
@@ -553,7 +667,7 @@ export default function Home() {
           </div>
         </aside>
 
-        {/* CENTER: STAGE */}
+        {/* CENTER: STAGE (hosts both 3D and 2D; only the active one is shown) */}
         <main className="pl-stage">
           <div className="pl-grid" />
           <div className="pl-glow" />
@@ -563,58 +677,64 @@ export default function Home() {
             <div className="h" />
           </div>
 
-          <div className="pl-mount" ref={stageElRef} />
+          {/* 3D content — kept mounted so the WebGL context survives tab switches */}
+          <div style={{ position: "absolute", inset: 0, display: is2d ? "none" : undefined }}>
+            <div className="pl-mount" ref={stageElRef} />
 
-          {/* top-left HUD */}
-          <div className="pl-hud">
-            <div className="pl-hud-name">{modelName}</div>
-            <div className="pl-hud-row">
-              <span className="pl-badge">{partCountLabel}</span>
-              <span className="pl-axis">ASM-AXIS&nbsp;Y</span>
+            <div className="pl-hud">
+              <div className="pl-hud-name">{modelName}</div>
+              <div className="pl-hud-row">
+                <span className="pl-badge">{partCountLabel}</span>
+                <span className="pl-axis">ASM-AXIS&nbsp;Y</span>
+              </div>
+              <div className="pl-hud-help">
+                DRAG&nbsp;ORBIT&nbsp;&middot;&nbsp;SCROLL&nbsp;ZOOM
+                <br />
+                CLICK&nbsp;INSPECT
+              </div>
             </div>
-            <div className="pl-hud-help">
-              DRAG&nbsp;ORBIT&nbsp;&middot;&nbsp;SCROLL&nbsp;ZOOM
+
+            {singlePart && (
+              <div className="pl-single-banner">
+                SINGLE PART RESOLVED &middot; EXPLODE UNAVAILABLE
+              </div>
+            )}
+
+            <div className="pl-readout">
+              EXPLODE&nbsp;<span className="v">{explodeLabel}</span>
               <br />
-              CLICK&nbsp;INSPECT
+              SEPARATION&nbsp;<span className="v">LINEAR</span>
             </div>
+
+            {selected && (
+              <div className="pl-sel">
+                <div className="pl-sel-head">
+                  <span className="pl-sel-id">{selected.id}</span>
+                  <span className="pl-sel-flag">SELECTED</span>
+                </div>
+                <div className="pl-sel-name">{selected.name}</div>
+                <div className="pl-sel-note">{selected.note}</div>
+                <div className="pl-sel-actions">
+                  <button className="pl-sel-btn" onClick={focusSel}>
+                    FOCUS
+                  </button>
+                  <button className="pl-sel-btn" onClick={isolateSel}>
+                    ISOLATE
+                  </button>
+                  <button className="pl-sel-btn" onClick={clearSel}>
+                    RESET
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {singlePart && (
-            <div className="pl-single-banner">
-              SINGLE PART RESOLVED &middot; EXPLODE UNAVAILABLE
-            </div>
-          )}
-
-          <div className="pl-readout">
-            EXPLODE&nbsp;<span className="v">{explodeLabel}</span>
-            <br />
-            SEPARATION&nbsp;<span className="v">LINEAR</span>
+          {/* 2D content */}
+          <div style={{ position: "absolute", inset: 0, display: is2d ? undefined : "none" }}>
+            <TwoDStage factor={explode} active={is2d} frameCount={FRAMES_2D} />
           </div>
 
-          {/* selected part card */}
-          {selected && (
-            <div className="pl-sel">
-              <div className="pl-sel-head">
-                <span className="pl-sel-id">{selected.id}</span>
-                <span className="pl-sel-flag">SELECTED</span>
-              </div>
-              <div className="pl-sel-name">{selected.name}</div>
-              <div className="pl-sel-note">{selected.note}</div>
-              <div className="pl-sel-actions">
-                <button className="pl-sel-btn" onClick={focusSel}>
-                  FOCUS
-                </button>
-                <button className="pl-sel-btn" onClick={isolateSel}>
-                  ISOLATE
-                </button>
-                <button className="pl-sel-btn" onClick={clearSel}>
-                  RESET
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ===== STATE OVERLAYS ===== */}
+          {/* ===== SHARED STATE OVERLAYS ===== */}
           {appState === "empty" && (
             <div className="pl-overlay">
               <div className="pl-dropzone-wrap">
@@ -630,12 +750,14 @@ export default function Home() {
                   <div className="hint">
                     JPG / PNG &middot; single clear object
                     <br />
-                    Parallax segments &amp; reconstructs the parts
+                    {is2d
+                      ? "Parallax generates multi-angle shots & an exploded sequence"
+                      : "Parallax segments & reconstructs the parts"}
                   </div>
                 </label>
                 <div className="pl-cta-row">
                   <button className="pl-cta" onClick={useSample}>
-                    Use sample assembly
+                    {is2d ? "Use sample part" : "Use sample assembly"}
                   </button>
                   <button className="pl-cta-ghost" onClick={toggleAssets}>
                     Browse assets
@@ -649,16 +771,15 @@ export default function Home() {
             <div className="pl-overlay gen">
               <div className="pl-scan" />
               <div className="pl-gen-wrap">
-                <div className="pl-gen-label">RECONSTRUCTING</div>
+                <div className="pl-gen-label">
+                  {is2d ? "SYNTHESIZING" : "RECONSTRUCTING"}
+                </div>
                 <div className="pl-gen-num">
                   <span className="n">{Math.round(progress)}</span>
                   <span className="pct">%</span>
                 </div>
                 <div className="pl-gen-bar">
-                  <div
-                    className="fill"
-                    style={{ width: Math.round(progress) + "%" }}
-                  />
+                  <div className="fill" style={{ width: Math.round(progress) + "%" }} />
                 </div>
                 <div className="pl-gen-step">{genStep}</div>
               </div>
@@ -669,7 +790,9 @@ export default function Home() {
             <div className="pl-overlay err">
               <div className="pl-err-wrap">
                 <div className="pl-err-icon">!</div>
-                <div className="pl-err-title">Reconstruction failed</div>
+                <div className="pl-err-title">
+                  {is2d ? "Generation failed" : "Reconstruction failed"}
+                </div>
                 <div className="pl-err-code">ERR_GEOMETRY_UNRESOLVED</div>
                 <div className="pl-err-detail">
                   Could not segment a clean part boundary from
@@ -731,9 +854,7 @@ export default function Home() {
                   <div className="pl-asset-thumb">
                     <div
                       className="diamond"
-                      style={{
-                        borderColor: active ? ACCENT : "rgba(255,255,255,.22)",
-                      }}
+                      style={{ borderColor: active ? ACCENT : "rgba(255,255,255,.22)" }}
                     />
                     {active && <span className="pl-asset-active-dot" />}
                   </div>
