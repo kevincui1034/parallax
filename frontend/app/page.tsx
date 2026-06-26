@@ -72,6 +72,8 @@ export default function Home() {
   const [errAssetName, setErrAssetName] = useState("");
   const [selected, setSelected] = useState<Selected | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([INTRO]);
+  // Real exploded-view video (Kling V3 output) for the 2D tab. null → canvas placeholder.
+  const [twoDVideoSrc, setTwoDVideoSrc] = useState<string | null>(null);
 
   const viewerRef = useRef<ParallaxViewer | null>(null);
   const stageElRef = useRef<HTMLDivElement | null>(null);
@@ -83,13 +85,23 @@ export default function Home() {
   const singlePartRef = useRef(false);
   const modeRef = useRef<Mode>("3d");
 
-  singlePartRef.current = singlePart;
-  modeRef.current = mode;
+  useEffect(() => {
+    singlePartRef.current = singlePart;
+  }, [singlePart]);
+  useEffect(() => {
+    modeRef.current = mode;
+  }, [mode]);
 
-  // optional ?tab=2d|3d deep link (read once on mount)
+  // One-time client init from URL/env (can't live in a useState initializer
+  // without an SSR hydration mismatch). ?tab=2d|3d deep link + optional sample
+  // exploded-view clip (NEXT_PUBLIC_SAMPLE_2D_VIDEO) to exercise the video path.
   useEffect(() => {
     const t = new URLSearchParams(window.location.search).get("tab");
+    const sample = process.env.NEXT_PUBLIC_SAMPLE_2D_VIDEO;
+    /* eslint-disable react-hooks/set-state-in-effect -- intentional one-time client init */
     if (t === "2d" || t === "3d") setMode(t);
+    if (sample) setTwoDVideoSrc(sample);
+    /* eslint-enable react-hooks/set-state-in-effect */
   }, []);
 
   /* ---- 3D viewer lifecycle (kept mounted across tabs) ---- */
@@ -373,6 +385,9 @@ export default function Home() {
         setSinglePart(false);
         setExplode(0);
         setSelected(null);
+        // Real wiring: a TwoDResult from /api/jobs carries the Kling V3 video.
+        // setTwoDVideoSrc(fileUrl(result.video_url));  ← swap in when the backend returns it.
+        if (!process.env.NEXT_PUBLIC_SAMPLE_2D_VIDEO) setTwoDVideoSrc(null);
         setMsgs([
           {
             role: "agent",
@@ -731,7 +746,12 @@ export default function Home() {
 
           {/* 2D content */}
           <div style={{ position: "absolute", inset: 0, display: is2d ? undefined : "none" }}>
-            <TwoDStage factor={explode} active={is2d} frameCount={FRAMES_2D} />
+            <TwoDStage
+              factor={explode}
+              active={is2d}
+              frameCount={FRAMES_2D}
+              videoSrc={twoDVideoSrc ?? undefined}
+            />
           </div>
 
           {/* ===== SHARED STATE OVERLAYS ===== */}

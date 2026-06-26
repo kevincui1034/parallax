@@ -1088,6 +1088,15 @@ textarea::placeholder {
   height: 100%;
   display: block;
 }
+.pl2-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  pointer-events: none;
+}
 .pl2-angles {
   position: absolute;
   top: 14px;

@@ -91,18 +91,67 @@ export default function TwoDStage({
   factor,
   active,
   frameCount = 48,
+  videoSrc,
 }: {
   factor: number;
   active: boolean;
   frameCount?: number;
+  /** Real exploded-view video (Kling V3 output). When set, the slider scrubs
+   *  it via currentTime; otherwise the procedural canvas placeholder renders. */
+  videoSrc?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const durationRef = useRef(0);
   const layoutRef = useRef(buildLayout());
   const factorRef = useRef(factor);
-  factorRef.current = factor;
+  useEffect(() => {
+    factorRef.current = factor;
+  }, [factor]);
+
+  // ---- real-video path: scrub currentTime from the frame factor ----
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!videoSrc || !v) return;
+    const seek = () => {
+      const d = durationRef.current;
+      if (!d) return;
+      const t = Math.max(0, Math.min(1, factorRef.current)) * d;
+      if (Math.abs(v.currentTime - t) > 0.01) {
+        try {
+          v.currentTime = t;
+        } catch {
+          /* not seekable yet */
+        }
+      }
+    };
+    const onMeta = () => {
+      durationRef.current = v.duration || 0;
+      seek();
+    };
+    v.addEventListener("loadedmetadata", onMeta);
+    if (v.readyState >= 1) onMeta();
+    return () => v.removeEventListener("loadedmetadata", onMeta);
+  }, [videoSrc]);
 
   useEffect(() => {
+    const v = videoRef.current;
+    const d = durationRef.current;
+    if (!videoSrc || !v || !d) return;
+    const t = Math.max(0, Math.min(1, factor)) * d;
+    if (Math.abs(v.currentTime - t) > 0.01) {
+      try {
+        v.currentTime = t;
+      } catch {
+        /* not seekable yet */
+      }
+    }
+  }, [factor, videoSrc]);
+
+  // ---- placeholder path: procedural canvas diagram (no video yet) ----
+  useEffect(() => {
+    if (videoSrc) return;
     const canvas = canvasRef.current;
     const wrap = wrapRef.current;
     if (!canvas || !wrap) return;
@@ -224,13 +273,24 @@ export default function TwoDStage({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [active]);
+  }, [active, videoSrc]);
 
   const frameIdx = Math.round(Math.max(0, Math.min(1, factor)) * (frameCount - 1));
 
   return (
     <div className="pl2-wrap" ref={wrapRef}>
-      <canvas className="pl2-canvas" ref={canvasRef} />
+      {videoSrc ? (
+        <video
+          className="pl2-video"
+          ref={videoRef}
+          src={videoSrc}
+          muted
+          playsInline
+          preload="auto"
+        />
+      ) : (
+        <canvas className="pl2-canvas" ref={canvasRef} />
+      )}
 
       {/* top-left HUD */}
       <div className="pl-hud">
