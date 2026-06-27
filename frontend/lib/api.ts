@@ -17,10 +17,14 @@ export function fileUrl(modelUrl: string): string {
   return url(modelUrl);
 }
 
-/** Kick off generation. Returns the queued job. */
-export async function startGenerate(image: File): Promise<Job> {
+/** Kick off generation. `mode` picks the 2D (image→video) or 3D (parts) path. */
+export async function startGenerate(
+  image: File,
+  mode: "2d" | "3d" = "2d",
+): Promise<Job> {
   const body = new FormData();
   body.append("image", image);
+  body.append("mode", mode);
   const res = await fetch(url("/api/generate"), { method: "POST", body });
   if (!res.ok) throw new Error(`generate failed: ${res.status}`);
   return res.json();

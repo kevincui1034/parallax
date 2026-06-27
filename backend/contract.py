@@ -25,12 +25,27 @@ class Part(BaseModel):
 
 
 class ModelResult(BaseModel):
+    kind: Literal["3d"] = "3d"
     model_id: str
     source_image_url: str
     center: Vec3  # explode radiates from here
     bbox: BBox
     parts: list[Part]  # one entry per part; length 1 = fused-mesh fallback
 
+
+class TwoDResult(BaseModel):
+    """2D path (GMI-deployable): image -> multi-angle -> Kling exploded video.
+    The frontend frame slider scrubs `video_url` (0% assembled, 100% exploded)."""
+
+    kind: Literal["2d"] = "2d"
+    model_id: str
+    source_image_url: str
+    video_url: str
+    frame_count: Optional[int] = None
+    angles: list[str] = []  # multi-angle input shot URLs
+
+
+GenResult = Union[ModelResult, TwoDResult]
 
 JobStatus = Literal["queued", "running", "done", "error"]
 
@@ -39,7 +54,8 @@ class Job(BaseModel):
     job_id: str
     status: JobStatus
     progress: int = 0  # 0–100, best effort
-    result: Optional[ModelResult] = None  # present only when status == "done"
+    # present only when status == "done"; discriminated by `kind`
+    result: Optional[GenResult] = None
     error: Optional[str] = None
 
 

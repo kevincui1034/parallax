@@ -64,6 +64,7 @@ export interface SnapliiAction {
 
 /** The heart of the contract — everything the viewer needs to render + explode. */
 export interface ModelResult {
+  kind?: "3d";
   model_id: string;
   source_image_url: string;
   manual_url?: string;
@@ -92,8 +93,8 @@ export interface Job {
   status: JobStatus;
   /** 0–100, best effort. */
   progress: number;
-  /** Present only when status === "done". */
-  result: ModelResult | null;
+  /** Present only when status === "done". Discriminated by `kind`. */
+  result: ModelResult | TwoDResult | null;
   /** Human-readable string when status === "error", else null. */
   error: string | null;
 }
@@ -122,4 +123,24 @@ export interface AgentResponse {
   actions: AgentAction[];
   /** Citations from Google Search grounding. */
   citations?: Citation[];
+}
+
+/**
+ * 2D-path result — the GMI-deployable pipeline (image model → multi-angle shots
+ * → Kling V3 exploded-view video). The frame slider scrubs `video_url`.
+ *
+ * NOTE: this is a PROPOSED contract addition. CONTRACT.md is jointly owned —
+ * agree the shape with the backend before relying on it. `/api/generate` would
+ * return either a ModelResult (3D) or a TwoDResult (2D), discriminated by `kind`.
+ */
+export interface TwoDResult {
+  kind: "2d";
+  model_id: string;
+  source_image_url: string;
+  /** Exploded-view sequence; scrub currentTime 0 → duration (0% → 100%). */
+  video_url: string;
+  /** Optional: total frames, for the frame readout. */
+  frame_count?: number;
+  /** Optional: the multi-angle input shot URLs. */
+  angles?: string[];
 }
