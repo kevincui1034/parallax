@@ -90,8 +90,8 @@ const FRAMES_2D = 48;
 const INTRO: Msg = {
   role: "agent",
   text:
-    "Model ready — Epson EcoTank L3210. I resolved 4 separable parts from real pipeline analysis. Pick a part on the stage, drag the explode slider, or ask me to isolate, focus, or flag wear surfaces.",
-  actions: ["reconstruct() · 4 parts"],
+    "Model ready — Single-Cylinder Assembly. I resolved 8 separable parts from your photo. Pick a part on the stage, drag the explode slider, or ask me to isolate, focus, or flag wear surfaces.",
+  actions: ["reconstruct() · 8 parts"],
 };
 
 const GEN_STEPS_3D: [number, string][] = [
@@ -165,12 +165,12 @@ function fmtAction(a: AgentAction): string {
 }
 
 export default function Home() {
-  const [mode, setMode] = useState<Mode>("2d");
+  const [mode, setMode] = useState<Mode>("3d");
   const [appState, setAppState] = useState<AppState>("loaded");
-  const [modelName, setModelName] = useState("Epson EcoTank L3210");
+  const [modelName, setModelName] = useState("Single-Cylinder Assembly");
   const [explode, setExplode] = useState(0);
   const [singlePart, setSinglePart] = useState(false);
-  const [partCount, setPartCount] = useState(4);
+  const [partCount, setPartCount] = useState(8);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -210,9 +210,8 @@ export default function Home() {
   const userInteracting = useRef(false);
   const genAssetRef = useRef<Asset | null>(null);
   const singlePartRef = useRef(false);
-  const modeRef = useRef<Mode>("2d");
+  const modeRef = useRef<Mode>("3d");
   const explodeRef = useRef(0);
-  const cached3dParts = useRef<{ part_id: string; label: string; description: string }[]>([]);
 
   useEffect(() => {
     singlePartRef.current = singlePart;
@@ -397,56 +396,13 @@ export default function Home() {
       viewer.setAutoOrbit(false);
       viewerRef.current = viewer;
 
-      // Apply real cached part metadata + real generated frames
-      try {
-        const resp = await fetch("/demo-cache/result-3d.json");
-        if (resp.ok && !disposed) {
-          const cached: CachedResult = await resp.json();
-          const r = cached.result as Cached3DResult;
-          if (r.parts && r.parts.length > 0) {
-            viewer.updatePartMetadata(
-              r.parts.map((p) => ({ label: p.label, description: p.description })),
-            );
-            cached3dParts.current = r.parts.map((p) => ({
-              part_id: p.part_id,
-              label: p.label,
-              description: p.description,
-            }));
-          }
-          // Load real Kling frames into the 3D viewer
-          if (r.explode_frames && r.explode_frames.length > 0) {
-            const sourceImg = r.source_image_url
-              ? fileUrl(r.source_image_url)
-              : undefined;
-            const parts = r.parts.map((p) => ({
-              label: p.label,
-              description: p.description,
-            }));
-            viewer.setFrameSequence(r.explode_frames, sourceImg, parts);
-          }
-        }
-      } catch {
-        // fallback to default metadata
-      }
-
+      // Render the procedural part-separated 3D assembly (local model).
       selectTimer = setTimeout(() => {
         if (disposed || !viewer) return;
-        if (viewer.hasFrameSequence()) {
-          // Real frames are showing — set part context from cached data
-          const parts = cached3dParts.current;
-          if (parts.length > 0) {
-            setSelected({
-              id: parts[0].part_id,
-              name: parts[0].label,
-              note: parts[0].description,
-            });
-          }
-        } else {
-          viewer.selectPart("P-02");
-          const m = viewer.partList().find((p) => p.id === "P-02");
-          if (m) setSelected(m);
-        }
-      }, 500);
+        viewer.selectPart("P-02");
+        const m = viewer.partList().find((p) => p.id === "P-02");
+        if (m) setSelected(m);
+      }, 220);
     })();
 
     return () => {
