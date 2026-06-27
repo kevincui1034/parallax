@@ -1,0 +1,22 @@
+{
+  "job_id": "manual_sample_blocked",
+  "status": "blocked",
+  "progress": 100,
+  "simple_message": "Could not generate visual manual. Image analysis failed.",
+  "input_images": [],
+  "object_type": "",
+  "likely_model": "",
+  "object_confidence": 0.0,
+  "object_summary": "",
+  "parts": [],
+  "sections": [],
+  "steps": [],
+  "visual_overlay": {"labels": []},
+  "warnings": [],
+  "non_claims": [],
+  "citations": [],
+  "explode": {"video_url": "", "frames": [], "status": "blocked"},
+  "turntable": {"video_url": "", "frames": [], "status": "blocked"},
+  "manual_json": {},
+  "artifact_dir": ""
+}

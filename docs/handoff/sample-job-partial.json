@@ -1,0 +1,72 @@
+{
+  "job_id": "manual_sample_partial",
+  "status": "partial",
+  "progress": 100,
+  "simple_message": "Visual manual ready (video generation was blocked, using placeholder frames). PDF and HTML generated.",
+  "input_images": [
+    {"id": "image_001", "url": "https://example.com/image1.jpg", "role": "main object photo"}
+  ],
+  "object_type": "keyboard",
+  "likely_model": "unknown",
+  "object_confidence": 0.65,
+  "object_summary": "A mechanical keyboard photographed from above.",
+  "parts": [
+    {
+      "id": "keycaps",
+      "number": 1,
+      "label": "Keycaps",
+      "function": "Provide tactile input surface",
+      "description": "Individual key caps across the keyboard layout.",
+      "visual_evidence": "Grid of small rectangular keys",
+      "confidence": 0.88,
+      "source_status": "vision_inferred",
+      "sources": [],
+      "unknowns": ["Key switch type not determined from image."],
+      "warnings": []
+    },
+    {
+      "id": "frame",
+      "number": 2,
+      "label": "Keyboard frame",
+      "function": "Houses all components",
+      "description": "Outer chassis of the keyboard.",
+      "visual_evidence": "Rectangular metal or plastic housing",
+      "confidence": 0.80,
+      "source_status": "vision_inferred",
+      "sources": [],
+      "unknowns": ["Material not confirmed."],
+      "warnings": []
+    }
+  ],
+  "sections": [
+    {"id": "overview", "title": "Object Overview"},
+    {"id": "layout", "title": "Numbered Layout", "parts": ["keycaps", "frame"]},
+    {"id": "exploded", "title": "Exploded View", "media": {"video": "", "frames": [], "status": "blocked"}},
+    {"id": "turntable", "title": "360-Style Preview", "media": {"video": "", "frames": [], "status": "blocked"}},
+    {"id": "parts", "title": "Part Cards", "parts": ["keycaps", "frame"]},
+    {"id": "operations", "title": "Operation Pages"},
+    {"id": "warnings", "title": "Warnings and Unknowns"},
+    {"id": "sources", "title": "Sources and Confidence Report"}
+  ],
+  "steps": [
+    {"id": "step_001", "title": "Orient the keyboard", "instruction": "Place the keyboard face up with keys visible.", "part_ids": [], "confidence": 0.9}
+  ],
+  "visual_overlay": {
+    "labels": [
+      {"part_id": "keycaps", "number": 1, "label": "Keycaps", "anchor": [0.5, 0.4], "label_position": [0.7, 0.2]},
+      {"part_id": "frame", "number": 2, "label": "Frame", "anchor": [0.5, 0.5], "label_position": [0.3, 0.8]}
+    ]
+  },
+  "warnings": [
+    "This is an AI-generated visual guide, not manufacturer-certified documentation."
+  ],
+  "non_claims": [
+    "Not a true 3D model.",
+    "Not repair certification."
+  ],
+  "citations": [],
+  "explode": {"video_url": "", "frames": [], "status": "blocked"},
+  "turntable": {"video_url": "", "frames": [], "status": "blocked"},
+  "manual_json": null,
+  "artifact_dir": "/tmp/artifacts/manual_sample_partial"
+}

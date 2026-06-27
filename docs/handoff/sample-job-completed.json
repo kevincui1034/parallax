@@ -1,0 +1,91 @@
+{
+  "job_id": "manual_sample_completed",
+  "status": "completed",
+  "progress": 100,
+  "simple_message": "Visual manual ready. PDF and interactive HTML generated.",
+  "input_images": [
+    {"id": "image_001", "url": "https://example.com/image1.jpg", "role": "main object photo"}
+  ],
+  "object_type": "motherboard",
+  "likely_model": "ATX motherboard",
+  "object_confidence": 0.78,
+  "object_summary": "A desktop PC motherboard photographed from above.",
+  "parts": [
+    {
+      "id": "cpu_socket",
+      "number": 1,
+      "label": "CPU socket",
+      "function": "Holds the central processor",
+      "description": "Large square socket near the center of the board.",
+      "visual_evidence": "Square metallic socket with lever mechanism",
+      "confidence": 0.93,
+      "source_status": "vision_inferred",
+      "sources": [],
+      "unknowns": ["Exact socket model is not guaranteed without product identification."],
+      "warnings": ["Do not install or remove components while powered."]
+    },
+    {
+      "id": "memory_slots",
+      "number": 2,
+      "label": "Memory slots",
+      "function": "Hold RAM modules",
+      "description": "Four DIMM slots arranged in pairs.",
+      "visual_evidence": "Long thin slots with clips at both ends",
+      "confidence": 0.90,
+      "source_status": "vision_inferred",
+      "sources": [],
+      "unknowns": ["Maximum supported memory capacity unknown."],
+      "warnings": []
+    },
+    {
+      "id": "pcie_slot",
+      "number": 3,
+      "label": "PCIe x16 slot",
+      "function": "Primary expansion slot for GPU",
+      "description": "Long PCIe slot for graphics card.",
+      "visual_evidence": "Long slot with retention clip",
+      "confidence": 0.85,
+      "source_status": "vision_inferred",
+      "sources": [],
+      "unknowns": ["PCIe generation not determined from image."],
+      "warnings": []
+    }
+  ],
+  "sections": [
+    {"id": "overview", "title": "Object Overview"},
+    {"id": "layout", "title": "Numbered Layout", "parts": ["cpu_socket", "memory_slots", "pcie_slot"]},
+    {"id": "exploded", "title": "Exploded View", "media": {"video": "", "frames": [], "status": "completed"}},
+    {"id": "turntable", "title": "360-Style Preview", "media": {"video": "", "frames": [], "status": "completed"}},
+    {"id": "parts", "title": "Part Cards", "parts": ["cpu_socket", "memory_slots", "pcie_slot"]},
+    {"id": "operations", "title": "Operation Pages"},
+    {"id": "warnings", "title": "Warnings and Unknowns"},
+    {"id": "sources", "title": "Sources and Confidence Report"}
+  ],
+  "steps": [
+    {"id": "step_001", "title": "Orient the object", "instruction": "Place the motherboard so the CPU socket is visible.", "part_ids": ["cpu_socket"], "confidence": 0.8},
+    {"id": "step_002", "title": "Identify expansion slots", "instruction": "Locate the PCIe x16 slot for GPU installation.", "part_ids": ["pcie_slot"], "confidence": 0.7}
+  ],
+  "visual_overlay": {
+    "labels": [
+      {"part_id": "cpu_socket", "number": 1, "label": "CPU socket", "anchor": [0.52, 0.36], "label_position": [0.66, 0.28]},
+      {"part_id": "memory_slots", "number": 2, "label": "Memory slots", "anchor": [0.30, 0.20], "label_position": [0.15, 0.10]},
+      {"part_id": "pcie_slot", "number": 3, "label": "PCIe x16", "anchor": [0.55, 0.65], "label_position": [0.75, 0.70]}
+    ]
+  },
+  "warnings": [
+    "This is an AI-generated visual guide, not manufacturer-certified documentation.",
+    "Do not rely on this for safety-critical installation unless supported by official sources.",
+    "Generated exploded/360 visuals are visual aids, not true 3D reconstruction."
+  ],
+  "non_claims": [
+    "Not a true 3D model.",
+    "Not repair certification.",
+    "Not an electrical safety approval.",
+    "Not CAD."
+  ],
+  "citations": [],
+  "explode": {"video_url": "", "frames": [], "status": "completed"},
+  "turntable": {"video_url": "", "frames": [], "status": "completed"},
+  "manual_json": null,
+  "artifact_dir": "/tmp/artifacts/manual_sample_completed"
+}

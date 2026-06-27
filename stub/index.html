@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agent Visual Manual</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0f1117; color: #e0e0e0; min-height: 100vh; }
+.container { max-width: 900px; margin: 0 auto; padding: 24px; }
+h1 { font-size: 24px; margin-bottom: 4px; }
+.subtitle { color: #888; margin-bottom: 24px; font-size: 14px; }
+
+.upload-zone { border: 2px dashed #333; border-radius: 12px; padding: 40px; text-align: center; margin-bottom: 20px; cursor: pointer; transition: border-color 0.2s; }
+.upload-zone:hover { border-color: #4a9eff; }
+.upload-zone.dragover { border-color: #4a9eff; background: rgba(74, 158, 255, 0.05); }
+.upload-zone p { color: #888; margin: 8px 0; }
+.upload-zone input { display: none; }
+
+.preview { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.preview img { width: 80px; height: 80px; object-fit: cover; border-radius: 8px; border: 1px solid #333; }
+
+.btn { padding: 12px 24px; border-radius: 8px; border: none; cursor: pointer; font-size: 14px; font-weight: 600; transition: opacity 0.2s; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-primary { background: #4a9eff; color: white; }
+.btn-secondary { background: #1a1d27; color: #aaa; border: 1px solid #333; }
+.btn-row { display: flex; gap: 8px; margin-bottom: 24px; }
+
+.status { background: #1a1d27; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: none; }
+.status.active { display: block; }
+.progress-bar { height: 6px; background: #333; border-radius: 3px; margin: 8px 0; overflow: hidden; }
+.progress-fill { height: 100%; background: #4a9eff; transition: width 0.3s; }
+.status-text { font-size: 14px; color: #aaa; }
+
+.result { display: none; }
+.result.active { display: block; }
+.result iframe { width: 100%; height: 600px; border: none; border-radius: 12px; background: white; }
+
+.disclaimer { font-size: 11px; color: #555; margin-top: 24px; text-align: center; }
+
+.ask-section { background: #1a1d27; border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+.ask-section input { width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #333; background: #0f1117; color: #e0e0e0; font-size: 14px; margin-bottom: 8px; }
+.ask-answer { font-size: 14px; color: #aaa; padding: 12px; background: #0f1117; border-radius: 6px; margin-top: 8px; display: none; }
+.ask-answer.active { display: block; }
+
+.snaplii-section { background: #1a1d27; border-radius: 8px; padding: 16px; margin-bottom: 16px; display: none; }
+.snaplii-section.active { display: block; }
+.snaplii-section h3 { font-size: 16px; margin-bottom: 12px; }
+.snaplii-card { background: #0f1117; border: 1px solid #333; border-radius: 8px; padding: 16px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+.snaplii-card-label { font-size: 14px; font-weight: 600; }
+.snaplii-card-status { font-size: 12px; color: #888; margin-top: 4px; }
+.snaplii-card-btn { padding: 8px 16px; border-radius: 6px; border: none; cursor: pointer; font-size: 13px; font-weight: 600; background: #4a9eff; color: white; transition: opacity 0.2s; }
+.snaplii-card-btn:hover { opacity: 0.85; }
+.snaplii-card-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.snaplii-mock-badge { font-size: 10px; color: #666; background: #1a1d27; padding: 2px 6px; border-radius: 4px; margin-left: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Agent Visual Manual for Hire</h1>
+  <p class="subtitle">Upload product images → AI generates a visual manual with parts, exploded views, and 360 previews</p>
+
+  <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+    <p>📷 Click or drag images here</p>
+    <p style="font-size:12px;color:#555">Supports multiple images (JPG, PNG)</p>
+    <input type="file" id="fileInput" multiple accept="image/*"/>
+  </div>
+
+  <div class="preview" id="preview"></div>
+
+  <div class="btn-row">
+    <button class="btn btn-primary" id="runBtn" disabled onclick="runManual()">Generate Visual Manual</button>
+    <button class="btn btn-secondary" id="exportBtn" disabled onclick="exportManual()" style="display:none">Export</button>
+  </div>
+
+  <div class="status" id="statusBox">
+    <div class="status-text" id="statusText">Queued...</div>
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  </div>
+
+  <div class="result" id="resultBox">
+    <iframe id="manualFrame" src=""></iframe>
+  </div>
+
+  <div class="ask-section" id="askSection" style="display:none">
+    <h3 style="margin-bottom:8px;font-size:16px">Ask a question about this manual</h3>
+    <input type="text" id="askInput" placeholder="e.g., What parts are visible?" onkeypress="if(event.key==='Enter')askManual()"/>
+    <button class="btn btn-primary" onclick="askManual()">Ask</button>
+    <div class="ask-answer" id="askAnswer"></div>
+  </div>
+
+  <div class="snaplii-section" id="snapliiSection">
+    <h3>Next Steps with Snaplii</h3>
+    <div id="snapliiCards"></div>
+  </div>
+
+  <p class="disclaimer">AI-generated visual guide, not manufacturer-certified documentation.</p>
+</div>
+
+<script>
+let selectedFiles = [];
+let currentJobId = null;
+
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const preview = document.getElementById('preview');
+const runBtn = document.getElementById('runBtn');
+
+fileInput.addEventListener('change', (e) => {
+  selectedFiles = Array.from(e.target.files);
+  showPreview();
+});
+
+uploadZone.addEventListener('dragover', (e) => {
+  e.preventDefault();
+  uploadZone.classList.add('dragover');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', (e) => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  selectedFiles = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+  showPreview();
+});
+
+function showPreview() {
+  preview.innerHTML = '';
+  selectedFiles.forEach(f => {
+    const img = document.createElement('img');
+    img.src = URL.createObjectURL(f);
+    preview.appendChild(img);
+  });
+  runBtn.disabled = selectedFiles.length === 0;
+}
+
+async function runManual() {
+  if (selectedFiles.length === 0) return;
+  runBtn.disabled = true;
+  document.getElementById('statusBox').classList.add('active');
+  document.getElementById('resultBox').classList.remove('active');
+  document.getElementById('askSection').style.display = 'none';
+
+  const formData = new FormData();
+  selectedFiles.forEach(f => formData.append('images', f));
+
+  try {
+    const resp = await fetch('/v1/manuals', { method: 'POST', body: formData });
+    const data = await resp.json();
+    currentJobId = data.job_id;
+    document.getElementById('statusText').textContent = data.simple_message || 'Queued...';
+    pollJob(data.job_id);
+  } catch (e) {
+    document.getElementById('statusText').textContent = 'Error: ' + e.message;
+    runBtn.disabled = false;
+  }
+}
+
+async function pollJob(jobId) {
+  const eventSource = new EventSource(`/v1/manuals/${jobId}/events`);
+  eventSource.onmessage = (e) => {
+    const data = JSON.parse(e.data);
+    document.getElementById('statusText').textContent = data.simple_message || data.status;
+    document.getElementById('progressFill').style.width = data.progress + '%';
+
+    if (data.status === 'completed' || data.status === 'partial' || data.status === 'blocked') {
+      eventSource.close();
+      runBtn.disabled = false;
+      if (data.status !== 'blocked') {
+        showResult(jobId);
+      }
+    }
+  };
+  eventSource.onerror = () => {
+    eventSource.close();
+    setTimeout(() => pollJob(jobId), 2000);
+  };
+}
+
+function showResult(jobId) {
+  document.getElementById('resultBox').classList.add('active');
+  document.getElementById('manualFrame').src = `/v1/manuals/${jobId}/artifacts/index.html`;
+  document.getElementById('exportBtn').style.display = '';
+  document.getElementById('exportBtn').disabled = false;
+  document.getElementById('askSection').style.display = '';
+  loadSnapliiActions(jobId);
+}
+
+async function loadSnapliiActions(jobId) {
+  try {
+    const resp = await fetch(`/api/jobs/${jobId}`);
+    const data = await resp.json();
+    const actions = (data.result && data.result.snaplii_actions) || [];
+    if (actions.length > 0) {
+      renderSnapliiCards(jobId, actions);
+    } else {
+      // Auto-create default manual_card action
+      const cardResp = await fetch(`/v1/manuals/${jobId}/snaplii/actions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action_type: 'manual_card' })
+      });
+      const card = await cardResp.json();
+      renderSnapliiCards(jobId, [card]);
+    }
+  } catch (e) {
+    console.log('Snaplii actions load skipped:', e.message);
+  }
+}
+
+function renderSnapliiCards(jobId, actions) {
+  const section = document.getElementById('snapliiSection');
+  const container = document.getElementById('snapliiCards');
+  container.innerHTML = '';
+  section.classList.add('active');
+
+  actions.forEach(action => {
+    const card = document.createElement('div');
+    card.className = 'snaplii-card';
+    const mockBadge = action.mock ? '<span class="snaplii-mock-badge">MOCK</span>' : '';
+    card.innerHTML = `
+      <div>
+        <div class="snaplii-card-label">${action.label || 'Snaplii Action'}${mockBadge}</div>
+        <div class="snaplii-card-status">Status: ${action.status || 'pending'}</div>
+      </div>
+      <button class="snaplii-card-btn" onclick="clickSnapliiAction('${jobId}', '${action.id}')">Open</button>
+    `;
+    container.appendChild(card);
+  });
+}
+
+async function clickSnapliiAction(jobId, actionId) {
+  try {
+    const resp = await fetch(`/v1/manuals/${jobId}/snaplii/actions/${actionId}`);
+    const action = await resp.json();
+    if (action.url) {
+      window.open(action.url, '_blank');
+    } else {
+      alert('Snaplii action created (mock mode). Action ID: ' + actionId + '\nStatus: ' + (action.status || 'pending'));
+    }
+  } catch (e) {
+    alert('Error loading action: ' + e.message);
+  }
+}
+
+function exportManual() {
+  if (!currentJobId) return;
+  window.open(`/v1/manuals/${currentJobId}/artifacts/manual.pdf`, '_blank');
+}
+
+async function askManual() {
+  if (!currentJobId) return;
+  const input = document.getElementById('askInput');
+  const answer = document.getElementById('askAnswer');
+  const question = input.value.trim();
+  if (!question) return;
+
+  answer.classList.add('active');
+  answer.textContent = 'Thinking...';
+
+  try {
+    const formData = new FormData();
+    formData.append('question', question);
+    const resp = await fetch(`/v1/manuals/${currentJobId}/ask`, { method: 'POST', body: formData });
+    const data = await resp.json();
+    answer.textContent = data.answer || 'No answer available.';
+  } catch (e) {
+    answer.textContent = 'Error: ' + e.message;
+  }
+}
+</script>
+</body>
+</html>

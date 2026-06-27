@@ -1,0 +1,8 @@
+uploads/
+.pytest_cache/
+tests/
+stub/
+__pycache__/
+*.pyc
+.env
+docs/

@@ -1,0 +1,7 @@
+.vercel
+__pycache__/
+*.pyc
+uploads/
+.pytest_cache/
+.env
+test_snaplii.py
