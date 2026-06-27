@@ -1008,6 +1008,9 @@ async def parallax_get_job(job_id: str):
         "progress": job.progress,
         "result": result,
         "error": error,
+        "simple_message": job.simple_message if px_status == "running" else "",
+        "source_image_url": source_image_url if px_status == "running" else "",
+        "object_type": job.object_type if px_status == "running" else "",
     }
 
 

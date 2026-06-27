@@ -73,7 +73,7 @@ def load_settings() -> Settings:
         gmi_ie_base_url=_get("GMI_IE_BASE_URL", "https://console.gmicloud.ai/api/v1/ie/requestqueue/apikey"),
         image_generate_model_id=_get("IMAGE_GENERATE_MODEL_ID", "gpt-image-2-generate"),
         image_edit_model_id=_get("IMAGE_EDIT_MODEL_ID", "gpt-image-2-edit"),
-        video_model_id=_get("VIDEO_MODEL_ID", "kling-v3-image-to-video"),
+        video_model_id=_get("VIDEO_MODEL_ID", "kling-v3-omni"),
         tavily_api_key=_get("TAVILY_API_KEY"),
         langsmith_tracing=_get_bool("LANGSMITH_TRACING", False),
         langsmith_api_key=_get("LANGSMITH_API_KEY"),

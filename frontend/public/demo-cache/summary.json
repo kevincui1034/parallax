@@ -1,0 +1,16 @@
+{
+  "2d": {
+    "job_id": "manual_7e9fa092a743",
+    "object_type": "inkjet_printer",
+    "frame_count": 24,
+    "has_video": true,
+    "has_frames": true,
+    "has_manual": true
+  },
+  "3d": {
+    "job_id": "manual_9686c5fc86ad",
+    "object_type": "inkjet printer",
+    "parts_count": 4,
+    "has_manual": true
+  }
+}

@@ -1,0 +1,9 @@
+feat: integrate Snaplii action cards into parallax frontend
+
+- Add SnapliiAction type to contract.ts
+- Add createSnapliiAction and getSnapliiAction API functions
+- Render Snaplii action cards in agent sidebar after manual completion
+- Auto-create default 'Save / Share with Snaplii' card on job completion
+- Cards show label, status, MOCK badge, and Open button
+- Click Open fetches action detail and opens URL or shows mock dialog
+- Add CAD-dark themed CSS for .pl-snaplii cards matching parallax design

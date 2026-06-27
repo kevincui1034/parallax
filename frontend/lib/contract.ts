@@ -97,6 +97,12 @@ export interface Job {
   result: ModelResult | TwoDResult | null;
   /** Human-readable string when status === "error", else null. */
   error: string | null;
+  /** Streaming: human-readable step message during "running". */
+  simple_message?: string;
+  /** Streaming: source image URL available before result is ready. */
+  source_image_url?: string;
+  /** Streaming: object type identified during analysis. */
+  object_type?: string;
 }
 
 /* ----- Agent action protocol (frozen — both sides implement exactly these) ----- */

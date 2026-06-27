@@ -27,12 +27,12 @@ async def generate_videos(state: dict) -> dict:
     # Generate both videos concurrently
     explode_task = generate_video(
         image_url,
-        kling_prompts.get("explode", "Create an exploded-view animation of this product. Keep centered. Do not add text or labels."),
+        kling_prompts.get("explode", "High-fidelity industrial product animation using 3D Spacetime physics. From the starting frame, the mechanical assembly smoothly breaks apart into a perfectly aligned exploded view. The outer shell casing panels slide directly outwards. Internal components float gracefully in place with true physical weight, inertia, and zero distortion. Cinematic slow push-in with subtle 30-degree orbital pan. Photorealistic shadows and studio lighting. No debris, no text, no labels, no logos."),
         mode="explode",
     )
     turntable_task = generate_video(
         image_url,
-        kling_prompts.get("turntable", "Create a 360-style turntable preview of this product. Keep centered. Do not add text or labels."),
+        kling_prompts.get("turntable", "Smooth cinematic 360-degree product turntable rotation on a clean neutral studio background. Photorealistic lighting and reflections update naturally as the object rotates. High engineering commercial aesthetic, no text, no labels, no logos."),
         mode="turntable",
     )
 

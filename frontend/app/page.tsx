@@ -18,6 +18,51 @@ type AppState = "loaded" | "empty" | "generating" | "error";
 type AssetType = "multi" | "single" | "error";
 type Selected = Pick<PartMeta, "id" | "name" | "note">;
 
+interface CachedPart {
+  part_id: string;
+  label: string;
+  description: string;
+  confidence: number;
+}
+
+interface Cached2DResult {
+  kind: "2d";
+  model_id: string;
+  source_image_url: string;
+  video_url: string;
+  frame_count: number;
+  explode_frames: string[] | null;
+  object_type: string;
+  likely_model: string;
+  manual_url: string;
+  pdf_url: string;
+  steps: { id: string; title: string; instruction: string }[];
+  object_summary: string;
+}
+
+interface Cached3DResult {
+  model_id: string;
+  source_image_url: string;
+  manual_url: string;
+  pdf_url: string;
+  parts: CachedPart[];
+  object_type: string;
+  likely_model: string;
+  object_summary: string;
+  object_confidence: number;
+  explode_frames: string[];
+  turntable_frames: string[];
+  steps: { id: string; title: string; instruction: string }[];
+  warnings: string[];
+}
+
+interface CachedResult {
+  job_id: string;
+  status: string;
+  progress: number;
+  result: Cached2DResult | Cached3DResult;
+}
+
 interface Msg {
   role: "agent" | "user";
   text: string;
@@ -45,8 +90,8 @@ const FRAMES_2D = 48;
 const INTRO: Msg = {
   role: "agent",
   text:
-    "Model ready — Single-Cylinder Assembly. I resolved 8 separable parts from your photo. Pick a part on the stage, drag the explode slider, or ask me to isolate, focus, or flag wear surfaces.",
-  actions: ["reconstruct() · 8 parts"],
+    "Model ready — Epson EcoTank L3210. I resolved 4 separable parts from real pipeline analysis. Pick a part on the stage, drag the explode slider, or ask me to isolate, focus, or flag wear surfaces.",
+  actions: ["reconstruct() · 4 parts"],
 };
 
 const GEN_STEPS_3D: [number, string][] = [
@@ -120,12 +165,12 @@ function fmtAction(a: AgentAction): string {
 }
 
 export default function Home() {
-  const [mode, setMode] = useState<Mode>("3d");
+  const [mode, setMode] = useState<Mode>("2d");
   const [appState, setAppState] = useState<AppState>("loaded");
-  const [modelName, setModelName] = useState("Single-Cylinder Assembly");
+  const [modelName, setModelName] = useState("Epson EcoTank L3210");
   const [explode, setExplode] = useState(0);
   const [singlePart, setSinglePart] = useState(false);
-  const [partCount, setPartCount] = useState(8);
+  const [partCount, setPartCount] = useState(4);
   const [draft, setDraft] = useState("");
   const [thinking, setThinking] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -144,6 +189,7 @@ export default function Home() {
   const [manualUrl, setManualUrl] = useState<string | null>(null);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
   const [autoPlaying, setAutoPlaying] = useState(false);
+  const [streamSourceImage, setStreamSourceImage] = useState<string | null>(null);
 
   const viewerRef = useRef<ParallaxViewer | null>(null);
   const stageElRef = useRef<HTMLDivElement | null>(null);
@@ -164,8 +210,9 @@ export default function Home() {
   const userInteracting = useRef(false);
   const genAssetRef = useRef<Asset | null>(null);
   const singlePartRef = useRef(false);
-  const modeRef = useRef<Mode>("3d");
+  const modeRef = useRef<Mode>("2d");
   const explodeRef = useRef(0);
+  const cached3dParts = useRef<{ part_id: string; label: string; description: string }[]>([]);
 
   useEffect(() => {
     singlePartRef.current = singlePart;
@@ -187,6 +234,29 @@ export default function Home() {
     if (t === "2d" || t === "3d") setMode(t);
     if (sample) setTwoDVideoSrc(sample);
     /* eslint-enable react-hooks/set-state-in-effect */
+
+    // Load cached 2D pipeline result for demo (default landing mode)
+    fetch("/demo-cache/result-2d.json")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data: CachedResult | null) => {
+        if (!data) return;
+        const r = data.result as Cached2DResult;
+        setTwoDVideoSrc(r.video_url || null);
+        setTwoDFrames(r.explode_frames ?? null);
+        setTwoDSourceImage(r.source_image_url ? fileUrl(r.source_image_url) : null);
+        setManualUrl(r.manual_url ? fileUrl(r.manual_url) : null);
+        setPdfUrl(r.pdf_url ? fileUrl(r.pdf_url) : null);
+        const displayName = r.object_type || r.likely_model || "Analyzed object";
+        setModelName(displayName);
+        setMsgs([
+          {
+            role: "agent",
+            text: `Loaded real pipeline output for ${displayName}. Drag the FRAME slider — 0% assembled, 100% exploded.${r.manual_url ? " Visual manual available." : ""}`,
+            actions: [`kling · ${r.frame_count ?? FRAMES_2D} frames`],
+          },
+        ]);
+      })
+      .catch(() => {});
   }, []);
 
   /* ---- Claude Code-style animated spinner + simulated progress ---- */
@@ -326,12 +396,57 @@ export default function Home() {
       });
       viewer.setAutoOrbit(false);
       viewerRef.current = viewer;
+
+      // Apply real cached part metadata + real generated frames
+      try {
+        const resp = await fetch("/demo-cache/result-3d.json");
+        if (resp.ok && !disposed) {
+          const cached: CachedResult = await resp.json();
+          const r = cached.result as Cached3DResult;
+          if (r.parts && r.parts.length > 0) {
+            viewer.updatePartMetadata(
+              r.parts.map((p) => ({ label: p.label, description: p.description })),
+            );
+            cached3dParts.current = r.parts.map((p) => ({
+              part_id: p.part_id,
+              label: p.label,
+              description: p.description,
+            }));
+          }
+          // Load real Kling frames into the 3D viewer
+          if (r.explode_frames && r.explode_frames.length > 0) {
+            const sourceImg = r.source_image_url
+              ? fileUrl(r.source_image_url)
+              : undefined;
+            const parts = r.parts.map((p) => ({
+              label: p.label,
+              description: p.description,
+            }));
+            viewer.setFrameSequence(r.explode_frames, sourceImg, parts);
+          }
+        }
+      } catch {
+        // fallback to default metadata
+      }
+
       selectTimer = setTimeout(() => {
         if (disposed || !viewer) return;
-        viewer.selectPart("P-02");
-        const m = viewer.partList().find((p) => p.id === "P-02");
-        if (m) setSelected(m);
-      }, 220);
+        if (viewer.hasFrameSequence()) {
+          // Real frames are showing — set part context from cached data
+          const parts = cached3dParts.current;
+          if (parts.length > 0) {
+            setSelected({
+              id: parts[0].part_id,
+              name: parts[0].label,
+              note: parts[0].description,
+            });
+          }
+        } else {
+          viewer.selectPart("P-02");
+          const m = viewer.partList().find((p) => p.id === "P-02");
+          if (m) setSelected(m);
+        }
+      }, 500);
     })();
 
     return () => {
@@ -811,6 +926,7 @@ export default function Home() {
     setProgress(0);
     setGenStep("Uploading photo…");
     setErrAssetName(file.name);
+    setStreamSourceImage(null);
     startSpinner();
     try {
       const job = await apiGenerate(file, "2d");
@@ -818,6 +934,18 @@ export default function Home() {
         // Sync real progress — the simulated progress takes the max
         const p = j.progress ?? 0;
         realProgress.current = p;
+        // Stream partial results: show source image as soon as available
+        if (j.source_image_url) {
+          setStreamSourceImage(fileUrl(j.source_image_url));
+        }
+        // Stream backend step message
+        if (j.simple_message) {
+          setGenStep(j.simple_message);
+        }
+        // Stream object type if identified
+        if (j.object_type) {
+          setModelName(j.object_type);
+        }
       });
       // Jump to 100% on completion for a satisfying finish
       stopSpinner();
@@ -856,16 +984,120 @@ export default function Home() {
     }
   }, [startSpinner, stopSpinner, resetIdle]);
 
+  /* ---- load cached real pipeline output for demo ---- */
+  const loadCachedDemo = useCallback(async () => {
+    const mode = modeRef.current;
+    const cacheUrl = `/demo-cache/result-${mode}.json`;
+    setAppState("generating");
+    setProgress(0);
+    setGenStep(mode === "2d" ? "Loading cached pipeline…" : "Loading cached analysis…");
+    setStreamSourceImage(null);
+    startSpinner();
+
+    // Simulate progressive steps while fetching
+    const steps = mode === "2d" ? GEN_STEPS_2D : GEN_STEPS_3D;
+    const stepTimer = setInterval(() => {
+      progAccum.current += 8 + Math.random() * 6;
+      const p = Math.min(progAccum.current, 95);
+      setProgress(p);
+      let step = steps[0][1];
+      for (const st of steps) if (p >= st[0]) step = st[1];
+      setGenStep(step);
+    }, 200);
+
+    try {
+      const resp = await fetch(cacheUrl);
+      if (!resp.ok) throw new Error(`cache fetch failed: ${resp.status}`);
+      const cached: CachedResult = await resp.json();
+      // Wait a minimum time for the animation to feel real
+      await new Promise((r) => setTimeout(r, 1200));
+
+      clearInterval(stepTimer);
+      stopSpinner();
+      setProgress(100);
+      setGenStep("Done");
+
+      if (mode === "2d") {
+        const r = cached.result as Cached2DResult;
+        setTwoDVideoSrc(r.video_url || null);
+        setTwoDFrames(r.explode_frames ?? null);
+        setTwoDSourceImage(r.source_image_url ? fileUrl(r.source_image_url) : null);
+        setManualUrl(r.manual_url ? fileUrl(r.manual_url) : null);
+        setPdfUrl(r.pdf_url ? fileUrl(r.pdf_url) : null);
+        setModelName(r.object_type || r.likely_model || "Analyzed object");
+        setActiveAssetId("");
+        setSinglePart(false);
+        setExplode(0);
+        setSelected(null);
+        setAppState("loaded");
+        setMsgs([
+          {
+            role: "agent",
+            text: `Loaded real pipeline output for ${r.object_type || r.likely_model}. Drag the FRAME slider — 0% assembled, 100% exploded.${r.manual_url ? " Visual manual available." : ""}`,
+            actions: [`kling · ${r.frame_count ?? FRAMES_2D} frames`],
+          },
+        ]);
+        setTimeout(() => resetIdle(), 100);
+      } else {
+        const r = cached.result as Cached3DResult;
+        const realParts = r.parts;
+        const v = viewerRef.current;
+        if (v) {
+          v.setSinglePart(false);
+          v.reset();
+          // Update part metadata to match real analysis
+          v.updatePartMetadata(
+            realParts.map((p) => ({ label: p.label, description: p.description })),
+          );
+        }
+        const displayName = r.object_type || r.likely_model || "Analyzed object";
+        setModelName(displayName);
+        setActiveAssetId("");
+        setSinglePart(false);
+        setPartCount(realParts.length);
+        setExplode(0);
+        setSelected(null);
+        setManualUrl(r.manual_url ? fileUrl(r.manual_url) : null);
+        setPdfUrl(r.pdf_url ? fileUrl(r.pdf_url) : null);
+        setTwoDSourceImage(r.source_image_url ? fileUrl(r.source_image_url) : null);
+        setAppState("loaded");
+        setMsgs([
+          {
+            role: "agent",
+            text: `Loaded ${displayName} — ${realParts.length} parts resolved from real analysis. Ask me to explode it, isolate a subsystem, or flag wear surfaces.`,
+            actions: [`reconstruct() · ${realParts.length} parts`],
+          },
+        ]);
+        // Select first part after a brief delay
+        setTimeout(() => {
+          const vv = viewerRef.current;
+          if (vv) {
+            const firstId = vv.partList()[0]?.id;
+            if (firstId) {
+              vv.selectPart(firstId);
+              selectById(firstId);
+            }
+          }
+        }, 240);
+      }
+    } catch {
+      clearInterval(stepTimer);
+      stopSpinner();
+      // Fallback to simulated generation
+      startGenerate(ASSETS[0]);
+    }
+  }, [startSpinner, stopSpinner, resetIdle, startGenerate, selectById]);
+
+  const useSample = useCallback(() => loadCachedDemo(), [loadCachedDemo]);
   const onFile = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
       if (modeRef.current === "2d") runGenerate2D(file);
-      else startGenerate(ASSETS[0]); // 3D backend is a stub → keep the simulation
+      else loadCachedDemo();
     },
-    [runGenerate2D, startGenerate],
+    [runGenerate2D, loadCachedDemo],
   );
-  const useSample = useCallback(() => startGenerate(ASSETS[0]), [startGenerate]);
   const selectAsset = useCallback(
     (a: Asset) => {
       setDrawerOpen(false);
@@ -1180,10 +1412,11 @@ export default function Home() {
             <TwoDStage
               factor={explode}
               active={is2d}
-              frameCount={FRAMES_2D}
+              frameCount={twoDFrames?.length ?? FRAMES_2D}
               videoSrc={twoDVideoSrc ?? undefined}
               frames={twoDFrames ?? undefined}
               sourceImageUrl={twoDSourceImage ?? undefined}
+              objectName={modelName}
             />
           </div>
 
@@ -1224,6 +1457,23 @@ export default function Home() {
             <div className="pl-overlay gen">
               <div className="pl-scan" />
               <div className="pl-gen-wrap">
+                {/* Streaming source image preview */}
+                {streamSourceImage && (
+                  <div className="pl-gen-preview">
+                    <img src={streamSourceImage} alt="Uploaded product" />
+                    <div className="pl-gen-preview-label">SOURCE</div>
+                  </div>
+                )}
+                {/* Skeleton placeholder for the result */}
+                {!streamSourceImage && (
+                  <div className="pl-gen-skeleton">
+                    <div className="pl-sk-line w60" />
+                    <div className="pl-sk-line w40" />
+                    <div className="pl-sk-block" />
+                    <div className="pl-sk-line w80" />
+                    <div className="pl-sk-line w30" />
+                  </div>
+                )}
                 <div className="pl-gen-spinner-row">
                   <span className="pl-gen-icon" key={spinnerChar}>{spinnerChar}</span>
                   <span className="pl-gen-verb" key={spinnerVerb}>{spinnerVerb}…</span>

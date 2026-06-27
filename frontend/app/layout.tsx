@@ -19,6 +19,7 @@ export const metadata: Metadata = {
   title: "Parallax — Exploded Parts Explorer",
   description:
     "Upload a product photo, get an interactive exploded-parts 3D diagram you can inspect, query, and reassemble.",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1",
 };
 
 export default function RootLayout({

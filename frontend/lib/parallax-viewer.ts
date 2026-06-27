@@ -20,6 +20,23 @@ export interface ViewerOptions {
   onPick?: (meta: PartMeta | null) => void;
 }
 
+interface PartLabel {
+  sprite: THREE.Sprite;
+  homeOffset: THREE.Vector3;
+}
+
+interface FrameSeqState {
+  textures: THREE.Texture[];
+  mesh: THREE.Mesh;
+  mat: THREE.MeshStandardMaterial;
+  baseGeometry: THREE.BufferGeometry;
+  depthData: Float32Array | null;
+  depthCache: Map<THREE.Texture, Float32Array>;
+  count: number;
+  loaded: boolean;
+  partLabels: PartLabel[];
+}
+
 interface PartUserData {
   partId: string;
   home: THREE.Vector3;
@@ -99,6 +116,7 @@ export class ParallaxViewer {
   private assembly: THREE.Group;
   private parts: THREE.Group[] = [];
   private ray: THREE.Raycaster;
+  private frameSeq: FrameSeqState | null = null;
 
   private sph = { radius: 26, theta: 0.7, phi: 1.08 };
   private sphTarget = { radius: 26, theta: 0.7, phi: 1.08 };
@@ -392,6 +410,288 @@ export class ParallaxViewer {
     });
   }
 
+  /**
+   * Update the metadata (name, note) of existing parts to match real analysis.
+   * Maps external part labels onto the procedural geometry by index.
+   */
+  updatePartMetadata(externalParts: { label: string; description: string }[]): void {
+    const count = Math.min(externalParts.length, this.parts.length);
+    for (let i = 0; i < count; i++) {
+      const ud = this.parts[i].userData as unknown as PartUserData;
+      ud.meta.name = externalParts[i].label;
+      ud.meta.note = externalParts[i].description;
+    }
+  }
+
+  /**
+   * Load real generated Kling explode frames and display them on a
+   * depth-displaced mesh. The explode slider scrubs through frames and
+   * increases depth displacement, creating a 3D deconstruction view.
+   * Part labels float in 3D space as parts deconstruct.
+   */
+  setFrameSequence(
+    frameUrls: string[],
+    sourceImageUrl?: string,
+    parts?: { label: string; description: string }[],
+  ): void {
+    if (frameUrls.length === 0) return;
+    const loader = new THREE.TextureLoader();
+
+    const allUrls = sourceImageUrl
+      ? [sourceImageUrl, ...frameUrls]
+      : frameUrls;
+
+    // Build or reuse the displaced mesh
+    if (!this.frameSeq) {
+      const geo = new THREE.PlaneGeometry(12, 12, 128, 128);
+      const mat = new THREE.MeshStandardMaterial({
+        roughness: 0.65,
+        metalness: 0.15,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 1,
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.visible = false;
+      this.scene.add(mesh);
+      this.frameSeq = {
+        textures: [],
+        mesh,
+        mat,
+        baseGeometry: geo.clone(),
+        depthData: null,
+        depthCache: new Map(),
+        count: 0,
+        loaded: false,
+        partLabels: [],
+      };
+    }
+
+    const fs = this.frameSeq;
+    fs.count = allUrls.length;
+    fs.loaded = false;
+
+    // Dispose old labels
+    fs.partLabels.forEach((p) => {
+      this.scene.remove(p.sprite);
+      p.sprite.material.map?.dispose();
+      p.sprite.material.dispose();
+    });
+    fs.partLabels = [];
+
+    const loadAll = async () => {
+      for (let i = 0; i < allUrls.length; i++) {
+        try {
+          const tex = await loader.loadAsync(allUrls[i]);
+          tex.colorSpace = THREE.SRGBColorSpace;
+          fs.textures[i] = tex;
+          if (i === 0) {
+            const img = tex.image as HTMLImageElement;
+            const aspect = img.width / img.height || 1;
+            fs.mesh.geometry.dispose();
+            const newGeo = new THREE.PlaneGeometry(12 * aspect, 12, 128, 128);
+            fs.mesh.geometry = newGeo;
+            fs.baseGeometry = newGeo.clone();
+            fs.mat.map = tex;
+            fs.mat.needsUpdate = true;
+            fs.depthData = this._estimateDepth(tex);
+            this._applyDepth(0);
+          }
+        } catch {
+          // skip failed frames
+        }
+      }
+
+      fs.loaded = true;
+
+      // Create part labels
+      if (parts && parts.length > 0) {
+        this._createPartLabels(parts);
+      }
+
+      // Hide procedural parts
+      this.parts.forEach((p) => (p.visible = false));
+      fs.mesh.visible = true;
+
+      // Camera setup
+      this.targetGoal.set(0, 0, 0);
+      this.target.set(0, 0, 0);
+      this.sphTarget.radius = 16;
+      this.sphTarget.theta = Math.PI / 2;
+      this.sphTarget.phi = Math.PI / 2;
+      this.sph.radius = 16;
+      this.sph.theta = Math.PI / 2;
+      this.sph.phi = Math.PI / 2;
+    };
+
+    loadAll();
+  }
+
+  /**
+   * Create floating text sprites for each part, positioned around the mesh.
+   * Labels fade in and move outward as the explode value increases.
+   */
+  private _createPartLabels(
+    parts: { label: string; description: string }[],
+  ): void {
+    if (!this.frameSeq) return;
+    const fs = this.frameSeq;
+
+    parts.forEach((part, i) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 80;
+      const ctx = canvas.getContext("2d")!;
+
+      // Background pill
+      ctx.fillStyle = "rgba(8, 16, 24, 0.85)";
+      ctx.roundRect(4, 4, 312, 72, 12);
+      ctx.fill();
+
+      // Accent border
+      ctx.strokeStyle = "rgba(58, 216, 255, 0.6)";
+      ctx.lineWidth = 2;
+      ctx.roundRect(4, 4, 312, 72, 12);
+      ctx.stroke();
+
+      // Label text
+      ctx.fillStyle = "#3ad8ff";
+      ctx.font = "bold 22px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.fillText(part.label, 16, 30);
+
+      // Description (truncated)
+      ctx.fillStyle = "rgba(255, 255, 255, 0.7)";
+      ctx.font = "14px sans-serif";
+      const desc = part.description.length > 45
+        ? part.description.slice(0, 42) + "..."
+        : part.description;
+      ctx.fillText(desc, 16, 54);
+
+      const texture = new THREE.CanvasTexture(canvas);
+      texture.colorSpace = THREE.SRGBColorSpace;
+      const material = new THREE.SpriteMaterial({
+        map: texture,
+        transparent: true,
+        opacity: 0,
+        depthTest: false,
+      });
+      const sprite = new THREE.Sprite(material);
+      sprite.scale.set(5, 1.25, 1);
+
+      // Position around the mesh at different angles
+      const angle = (i / parts.length) * Math.PI * 2 - Math.PI / 2;
+      const radius = 9;
+      const homeOffset = new THREE.Vector3(
+        Math.cos(angle) * radius,
+        Math.sin(angle) * radius * 0.6,
+        2,
+      );
+      sprite.position.copy(homeOffset);
+      this.scene.add(sprite);
+      fs.partLabels.push({ sprite, homeOffset });
+    });
+  }
+
+  /**
+   * Estimate a depth map from texture luminance. Uses caching to avoid
+   * recomputing for the same texture. Brighter pixels = closer (positive Z),
+   * darker = farther. Center bias makes the subject pop forward.
+   */
+  private _estimateDepth(tex: THREE.Texture): Float32Array {
+    if (!this.frameSeq) return new Float32Array(0);
+    const cached = this.frameSeq.depthCache.get(tex);
+    if (cached) return cached;
+
+    const img = tex.image as HTMLImageElement;
+    const w = 128;
+    const h = 128;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d")!;
+    ctx.drawImage(img, 0, 0, w, h);
+    const pixels = ctx.getImageData(0, 0, w, h).data;
+
+    const depth = new Float32Array(w * h);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const lum =
+          (0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2]) /
+          255;
+        const cx = (x - w / 2) / (w / 2);
+        const cy = (y - h / 2) / (h / 2);
+        const centerDist = Math.sqrt(cx * cx + cy * cy);
+        const centerBias = Math.max(0, 1 - centerDist * 0.7);
+        // Edge detection: larger luminance gradient = more depth
+        const gx = x > 0 && x < w - 1
+          ? Math.abs(pixels[(y * w + x + 1) * 4] - pixels[(y * w + x - 1) * 4]) / 255
+          : 0;
+        const gy = y > 0 && y < h - 1
+          ? Math.abs(pixels[((y + 1) * w + x) * 4] - pixels[((y - 1) * w + x) * 4]) / 255
+          : 0;
+        const edge = Math.min(1, (gx + gy) * 2);
+        depth[y * w + x] = lum * 0.35 + centerBias * 0.45 + edge * 0.2;
+      }
+    }
+    this.frameSeq.depthCache.set(tex, depth);
+    return depth;
+  }
+
+  /**
+   * Apply depth displacement to the mesh vertices.
+   * @param explode 0 = flat, 1 = fully displaced (parts lifted in Z)
+   */
+  private _applyDepth(explode: number): void {
+    if (!this.frameSeq || !this.frameSeq.depthData) return;
+    const geo = this.frameSeq.mesh.geometry as THREE.BufferGeometry;
+    const base = this.frameSeq.baseGeometry;
+    const positions = geo.attributes.position as THREE.BufferAttribute;
+    const basePos = base.attributes.position as THREE.BufferAttribute;
+    const depth = this.frameSeq.depthData;
+    const w = 128;
+    const h = 128;
+    const maxDepth = 3.5; // max Z displacement in world units
+
+    for (let i = 0; i < positions.count; i++) {
+      // Map vertex index to depth grid
+      const ix = i % (w + 1);
+      const iy = Math.floor(i / (w + 1));
+      const dx = Math.min(Math.floor((ix / (w + 1)) * w), w - 1);
+      const dy = Math.min(Math.floor((iy / (h + 1)) * h), h - 1);
+      const d = depth[dy * w + dx] || 0;
+      const z = (d - 0.5) * maxDepth * explode;
+      positions.setZ(i, basePos.getZ(i) + z);
+    }
+    positions.needsUpdate = true;
+    geo.computeVertexNormals();
+  }
+
+  /** True when real generated frames are active (no procedural geometry). */
+  hasFrameSequence(): boolean {
+    return !!(this.frameSeq && this.frameSeq.loaded);
+  }
+
+  /** Remove frame sequence and restore procedural geometry. */
+  clearFrameSequence(): void {
+    if (!this.frameSeq) return;
+    this.scene.remove(this.frameSeq.mesh);
+    this.frameSeq.textures.forEach((t) => t.dispose());
+    this.frameSeq.partLabels.forEach((p) => {
+      this.scene.remove(p.sprite);
+      p.sprite.material.map?.dispose();
+      p.sprite.material.dispose();
+    });
+    this.frameSeq.mat.dispose();
+    this.frameSeq.mesh.geometry.dispose();
+    this.frameSeq.baseGeometry.dispose();
+    this.frameSeq.depthCache.clear();
+    this.frameSeq = null;
+    this.parts.forEach((p) => (p.visible = true));
+  }
+
   private _bindInput(): void {
     const el = this.renderer.domElement;
     el.style.touchAction = "none";
@@ -441,6 +741,8 @@ export class ParallaxViewer {
   }
 
   private _pick(e: PointerEvent): void {
+    // Skip picking when real frames are active — no 3D parts to pick
+    if (this.hasFrameSequence()) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     const m = new THREE.Vector2(
       ((e.clientX - rect.left) / rect.width) * 2 - 1,
@@ -471,6 +773,13 @@ export class ParallaxViewer {
 
   // ---- Agent actions ----
   setExplode(f: number): void {
+    if (this.hasFrameSequence()) {
+      f = Math.max(0, Math.min(1, f));
+      this.explodeGoal = f;
+      // Pull camera back slightly as parts deconstruct
+      this.sphTarget.radius = 16 + f * 6;
+      return;
+    }
     if (this.singlePart) {
       this.explodeGoal = 0;
       return;
@@ -527,10 +836,17 @@ export class ParallaxViewer {
     this.explodeGoal = 0;
     this.clearHighlight();
     this.clearIsolate();
-    this.targetGoal.set(0, 0.3, 0);
-    this.sphTarget.radius = 24;
-    this.sphTarget.theta = 0.7;
-    this.sphTarget.phi = 1.08;
+    if (this.hasFrameSequence()) {
+      this.targetGoal.set(0, 0, 0);
+      this.sphTarget.radius = 16;
+      this.sphTarget.theta = Math.PI / 2;
+      this.sphTarget.phi = Math.PI / 2;
+    } else {
+      this.targetGoal.set(0, 0.3, 0);
+      this.sphTarget.radius = 24;
+      this.sphTarget.theta = 0.7;
+      this.sphTarget.phi = 1.08;
+    }
   }
   setSinglePart(v: boolean): void {
     this.singlePart = v;
@@ -598,6 +914,35 @@ export class ParallaxViewer {
       });
     }
 
+    // Update frame sequence: scrub explode frames + depth displacement + labels
+    if (this.frameSeq && this.frameSeq.loaded) {
+      const fs = this.frameSeq;
+
+      // Scrub explode frames based on explode slider
+      if (fs.count > 1) {
+        const idx = Math.min(
+          Math.floor(this.explode * fs.count),
+          fs.count - 1,
+        );
+        const tex = fs.textures[idx];
+        if (tex && fs.mat.map !== tex) {
+          fs.mat.map = tex;
+          fs.mat.needsUpdate = true;
+          fs.depthData = this._estimateDepth(tex);
+        }
+      }
+
+      // Apply depth displacement (always update for smooth animation)
+      this._applyDepth(this.explode);
+
+      // Animate part labels: fade in and move outward as explode increases
+      const labelOpacity = Math.min(1, Math.max(0, (this.explode - 0.15) / 0.25));
+      fs.partLabels.forEach((p) => {
+        p.sprite.material.opacity = labelOpacity;
+        p.sprite.position.copy(p.homeOffset).multiplyScalar(0.5 + this.explode * 0.8);
+      });
+    }
+
     const s = this.sph;
     const x = s.radius * Math.sin(s.phi) * Math.sin(s.theta);
     const y = s.radius * Math.cos(s.phi);
@@ -617,6 +962,7 @@ export class ParallaxViewer {
     this._running = false;
     window.removeEventListener("resize", this._onResize);
     if (this._ro) this._ro.disconnect();
+    this.clearFrameSequence();
     this.renderer.dispose();
     if (this.renderer.domElement.parentNode)
       this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);

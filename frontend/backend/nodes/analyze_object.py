@@ -53,8 +53,8 @@ Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
     }
   ],
   "kling_prompts": {
-    "explode": "Prompt for Kling image-to-video to create an exploded-view animation. Keep object centered. Separate visible components with smooth motion. Do not add text, labels, logos, or people.",
-    "turntable": "Prompt for Kling image-to-video to create a slow 360-style product turntable preview. Keep object centered on neutral background. Do not add text or labels."
+    "explode": "High-fidelity industrial product animation using 3D Spacetime physics. From the starting frame, the mechanical assembly smoothly breaks apart into a perfectly aligned exploded view. The outer shell casing panels slide directly outwards. Internal micro-circuitry, gears, and structural layers float gracefully in place with true physical weight, inertia, and zero distortion. The camera executes a cinematic slow push-in and a subtle 30-degree orbital pan around the deconstructing space. Photorealistic shadows and studio lighting update beautifully as gaps widen between the parts. Clean, pristine engineering commercial aesthetic, absolute structural consistency, no debris, no text, no labels, no logos.",
+    "turntable": "Smooth cinematic 360-degree product turntable rotation on a clean neutral studio background. Photorealistic lighting and reflections update naturally as the object rotates. High engineering commercial aesthetic, no text, no labels, no logos."
   },
   "warnings": ["This is an AI-generated visual guide, not manufacturer-certified documentation."],
   "non_claims": ["Not a true 3D model.", "Not repair certification.", "Not an electrical safety approval."]
@@ -99,8 +99,8 @@ async def analyze_object(state: dict) -> dict:
         state["visual_overlay"] = {"labels": [{"part_id": "main_body", "number": 1, "label": "Main body", "anchor": [0.5, 0.5], "label_position": [0.7, 0.3]}]}
         state["steps"] = [{"id": "step_001", "title": "Orient the object", "instruction": "Place the object so the main visible face matches the annotated image.", "part_ids": [], "confidence": 0.8}]
         state["kling_prompts"] = {
-            "explode": "Create a clean technical exploded-view animation of this product photo. Keep the object centered. Separate visible components slightly with smooth motion. Do not add text, labels, logos, extra parts, or people.",
-            "turntable": "Create a slow 360-style product turntable preview from this product photo. Keep the object centered and stable on a neutral background. Do not add text, labels, or new components."
+            "explode": "High-fidelity industrial product animation using 3D Spacetime physics. From the starting frame, the mechanical assembly smoothly breaks apart into a perfectly aligned exploded view. The outer shell casing panels slide directly outwards. Internal micro-circuitry, gears, and structural layers float gracefully in place with true physical weight, inertia, and zero distortion. The camera executes a cinematic slow push-in and a subtle 30-degree orbital pan around the deconstructing space. Photorealistic shadows and studio lighting update beautifully as gaps widen between the parts. Clean, pristine engineering commercial aesthetic, absolute structural consistency, no debris, no text, no labels, no logos.",
+            "turntable": "Smooth cinematic 360-degree product turntable rotation on a clean neutral studio background. Photorealistic lighting and reflections update naturally as the object rotates. High engineering commercial aesthetic, no text, no labels, no logos."
         }
         state["warnings"] = ["This is an AI-generated visual guide, not manufacturer-certified documentation."]
         state["non_claims"] = ["Not a true 3D model.", "Not repair certification.", "Not an electrical safety approval."]
@@ -128,8 +128,8 @@ async def analyze_object(state: dict) -> dict:
             state["visual_overlay"] = {"labels": [{"part_id": "main_body", "number": 1, "label": "Main body", "anchor": [0.5, 0.5], "label_position": [0.7, 0.3]}]}
             state["steps"] = [{"id": "step_001", "title": "Orient the object", "instruction": "Place the object so the main visible face matches the annotated image.", "part_ids": [], "confidence": 0.8}]
             state["kling_prompts"] = {
-                "explode": "Create a clean technical exploded-view animation of this product photo. Keep the object centered. Separate visible components slightly with smooth motion. Do not add text, labels, logos, extra parts, or people.",
-                "turntable": "Create a slow 360-style product turntable preview from this product photo. Keep the object centered and stable on a neutral background. Do not add text, labels, or new components."
+                "explode": "High-fidelity industrial product animation using 3D Spacetime physics. From the starting frame, the mechanical assembly smoothly breaks apart into a perfectly aligned exploded view. The outer shell casing panels slide directly outwards. Internal micro-circuitry, gears, and structural layers float gracefully in place with true physical weight, inertia, and zero distortion. The camera executes a cinematic slow push-in and a subtle 30-degree orbital pan around the deconstructing space. Photorealistic shadows and studio lighting update beautifully as gaps widen between the parts. Clean, pristine engineering commercial aesthetic, absolute structural consistency, no debris, no text, no labels, no logos.",
+                "turntable": "Smooth cinematic 360-degree product turntable rotation on a clean neutral studio background. Photorealistic lighting and reflections update naturally as the object rotates. High engineering commercial aesthetic, no text, no labels, no logos."
             }
             state["warnings"] = ["This is an AI-generated visual guide, not manufacturer-certified documentation."]
             state["non_claims"] = ["Not a true 3D model.", "Not repair certification.", "Not an electrical safety approval."]

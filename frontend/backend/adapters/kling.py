@@ -41,11 +41,12 @@ async def generate_video(
     image_url: str,
     prompt: str,
     mode: str = "turntable",  # "explode" or "turntable"
-    duration: str = "5",
+    duration: str = "10",
     negative_prompt: str = "blurry, low quality, distorted, text, labels, logos, watermark",
 ) -> VideoGenResult:
-    """Generate a video via Kling image-to-video through GMI Cloud.
+    """Generate a video via Kling V3 Omni through GMI Cloud.
 
+    Uses kling-v3-omni with image_list (first_frame) format, pro mode for 1080p.
     Returns VideoGenResult with video_url on success.
     """
     settings = load_settings()
@@ -55,24 +56,35 @@ async def generate_video(
 
     model = settings.video_model_id
 
-    # GMI IE API expects base64-encoded image data, not a URL
+    # Convert local file paths to base64 data URIs for the Omni API
     image_data = image_url
     if image_url.startswith("file://") or (
         not image_url.startswith("http") and not image_url.startswith("data:")
         and os.path.exists(image_url.replace("file://", ""))
     ):
         try:
-            image_data = _image_to_base64(image_url)
-            logger.info("Kling: converted image to base64 (%d chars)", len(image_data))
+            b64 = _image_to_base64(image_url)
+            mime_type, _ = mimetypes.guess_type(image_url.replace("file://", ""))
+            if not mime_type:
+                mime_type = "image/jpeg"
+            image_data = f"data:{mime_type};base64,{b64}"
+            logger.info("Kling: converted image to base64 data URI (%d chars)", len(image_data))
         except Exception as e:
             logger.error("Kling: failed to convert image to base64 — %s", e)
             return VideoGenResult(success=False, status="blocked", error=f"Image conversion failed: {e}")
 
+    # Kling V3 Omni uses image_list with type field, pro mode for 1080p
     payload = {
-        "image": image_data,
         "prompt": prompt,
+        "mode": "pro",
         "duration": duration,
-        "negative_prompt": negative_prompt,
+        "sound": "off",
+        "image_list": [
+            {
+                "image_url": image_data,
+                "type": "first_frame",
+            }
+        ],
     }
 
     logger.info("Kling: submitting %s video request (model=%s)", mode, model)

@@ -94,6 +94,7 @@ export default function TwoDStage({
   videoSrc,
   frames,
   sourceImageUrl,
+  objectName,
 }: {
   factor: number;
   active: boolean;
@@ -105,6 +106,8 @@ export default function TwoDStage({
   frames?: string[];
   /** The original source image URL — shown as a small inset when no video. */
   sourceImageUrl?: string;
+  /** Real object name from pipeline analysis. */
+  objectName?: string;
 }) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -384,9 +387,9 @@ export default function TwoDStage({
 
       {/* top-left HUD */}
       <div className="pl-hud">
-        <div className="pl-hud-name">Exploded Sequence</div>
+        <div className="pl-hud-name">{objectName || "Exploded Sequence"}</div>
         <div className="pl-hud-row">
-          <span className="pl-badge">{PARTS.length} PARTS</span>
+          <span className="pl-badge">{frameCount} FRAMES</span>
           <span className="pl-axis">2D · FRAME-SCRUB</span>
         </div>
         <div className="pl-hud-help">
